@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2022 Aleksandr Mashchenko.
+ * Copyright 2014-2023 Aleksandr Mashchenko.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -179,6 +179,14 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
     @Parameter(property = "noBackMerge", defaultValue = "false")
     private boolean noBackMerge = false;
 
+    /**
+     * Whether to skip merging release into the development branch.
+     *
+     * @since 1.20.0
+     */
+    @Parameter(property = "skipReleaseMergeDevBranch", defaultValue = "false")
+    private boolean skipReleaseMergeDevBranch = false;
+
     /** {@inheritDoc} */
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -188,7 +196,6 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
             // check uncommitted changes
             checkUncommittedChanges();
 
-            // git for-each-ref --format='%(refname:short)' refs/heads/release/*
             String releaseBranch = gitFindBranches(gitFlowConfig.getReleaseBranchPrefix(), false);
 
             if (StringUtils.isBlank(releaseBranch)) {
@@ -202,8 +209,7 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                     releaseBranch = releaseBranch.substring(gitFlowConfig.getOrigin().length() + 1);
 
                     if (StringUtils.countMatches(releaseBranch, gitFlowConfig.getReleaseBranchPrefix()) > 1) {
-                        throw new MojoFailureException(
-                                "More than one remote release branch exists. Cannot finish release.");
+                        throw new MojoFailureException("More than one remote release branch exists. Cannot finish release.");
                     }
 
                     gitCreateAndCheckout(releaseBranch, gitFlowConfig.getOrigin() + "/" + releaseBranch);
@@ -212,8 +218,7 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                 }
             }
             if (StringUtils.countMatches(releaseBranch, gitFlowConfig.getReleaseBranchPrefix()) > 1) {
-                throw new MojoFailureException(
-                        "More than one release branch exists. Cannot finish release.");
+                throw new MojoFailureException("More than one release branch exists. Cannot finish release.");
             }
 
             // check snapshots dependencies
@@ -237,7 +242,6 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
             gitCheckout(releaseBranch);
 
             if (!skipTestProject) {
-                // mvn clean test
                 mvnCleanTest();
             }
 
@@ -262,7 +266,7 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
             }
 
             if (!skipReleaseMergeProdBranch) {
-                // git checkout master
+                // git checkout production
                 gitCheckout(gitFlowConfig.getProductionBranch());
 
                 gitMerge(releaseBranch, releaseRebase, releaseMergeNoFF, releaseMergeFFOnly, commitMessages.getReleaseFinishMergeMessage(),
@@ -288,14 +292,14 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                 mvnRun(postReleaseGoals);
             }
 
-            if (notSameProdDevName()) {
+            if (notSameProdDevName() && !skipReleaseMergeDevBranch) {
                 // git checkout develop
                 gitCheckout(gitFlowConfig.getDevelopmentBranch());
 
                 // get develop version
                 final String developReleaseVersion = getCurrentProjectVersion();
                 if (commitDevelopmentVersionAtStart && useSnapshotInRelease) {
-                    // updating develop poms to master version to avoid merge conflicts
+                    // updating develop poms to production version to avoid merge conflicts
                     mvnSetVersions(currentVersion);
 
                     // commit the changes
@@ -329,7 +333,7 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                 commitDevelopmentVersionAtStart = false;
             }
 
-            if (!commitDevelopmentVersionAtStart) {
+            if (!commitDevelopmentVersionAtStart && !skipReleaseMergeDevBranch) {
                 // get next snapshot version
                 final String nextSnapshotVersion;
                 if (!settings.isInteractiveMode() && StringUtils.isNotBlank(developmentVersion)) {
@@ -348,17 +352,14 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                     throw new MojoFailureException("Next snapshot version is blank.");
                 }
 
-                // mvn versions:set -DnewVersion=... -DgenerateBackupPoms=false
                 mvnSetVersions(nextSnapshotVersion);
 
                 messageProperties.put("version", nextSnapshotVersion);
 
-                // git commit -a -m updating for next development version
                 gitCommit(commitMessages.getReleaseFinishMessage(), messageProperties);
             }
 
             if (installProject) {
-                // mvn clean install
                 mvnCleanInstall();
             }
 
@@ -374,7 +375,6 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
             }
 
             if (!keepBranch) {
-                // git branch -d release/...
                 gitBranchDelete(releaseBranch);
             }
         } catch (Exception e) {

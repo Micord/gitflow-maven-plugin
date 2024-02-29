@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2022 Aleksandr Mashchenko.
+ * Copyright 2014-2023 Aleksandr Mashchenko.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,7 @@
  */
 package com.amashchenko.maven.plugin.gitflow;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.apache.maven.artifact.Artifact;
@@ -26,7 +24,6 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.codehaus.plexus.components.interactivity.PrompterException;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 
@@ -169,8 +166,7 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
             }
 
             if (StringUtils.isBlank(hotfixBranchName)) {
-                throw new MojoFailureException(
-                        "Hotfix branch name to finish is blank.");
+                throw new MojoFailureException("Hotfix branch name to finish is blank.");
             }
 
             // support branch hotfix
@@ -205,7 +201,7 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
                             throw new MojoFailureException("More than one remote release branch exists. Cannot finish hotfix.");
                         }
 
-                        gitCreateBranch(remoteRelease, remoteReleases);
+                        gitFetchRemoteAndCompareCreate(remoteRelease);
                     }
                 }
             }
@@ -214,7 +210,6 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
             gitCheckout(hotfixBranchName);
 
             if (!skipTestProject) {
-                // mvn clean test
                 mvnCleanTest();
             }
 
@@ -243,7 +238,7 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
                 // git merge --no-ff hotfix/...
                 gitMergeNoff(hotfixBranchName, commitMessages.getHotfixFinishSupportMergeMessage(), messageProperties);
             } else if (!skipMergeProdBranch) {
-                // git checkout master
+                // git checkout production
                 gitCheckout(gitFlowConfig.getProductionBranch());
                 // git merge --no-ff hotfix/...
                 gitMergeNoff(hotfixBranchName, commitMessages.getHotfixFinishMergeMessage(), messageProperties);
@@ -274,8 +269,6 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
             }
 
             // check whether release branch exists
-            // git for-each-ref --count=1 --format="%(refname:short)"
-            // refs/heads/release/*
             final String releaseBranch = gitFindBranches(gitFlowConfig.getReleaseBranchPrefix(), true);
 
             if (supportBranchName == null) {
@@ -343,21 +336,16 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
                                 "Next snapshot version is blank.");
                     }
 
-                    // mvn versions:set -DnewVersion=...
-                    // -DgenerateBackupPoms=false
                     mvnSetVersions(nextSnapshotVersion);
 
                     Map<String, String> properties = new HashMap<>();
                     properties.put("version", nextSnapshotVersion);
 
-                    // git commit -a -m updating for next development version
-                    gitCommit(commitMessages.getHotfixFinishMessage(),
-                            properties);
+                    gitCommit(commitMessages.getHotfixFinishMessage(), properties);
                 }
             }
 
             if (installProject) {
-                // mvn clean install
                 mvnCleanInstall();
             }
 
@@ -387,7 +375,7 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
 
             if (!keepBranch) {
                 if (skipMergeProdBranch) {
-                    //force delete as upstream merge is skipped
+                    // force delete as upstream merge is skipped
                     gitBranchDeleteForce(hotfixBranchName);
                 } else {
                     // git branch -d hotfix/...
@@ -400,7 +388,6 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
     }
 
     private String promptBranchName() throws MojoFailureException, CommandLineException {
-        // git for-each-ref --format='%(refname:short)' refs/heads/hotfix/*
         String hotfixBranches = gitFindBranches(gitFlowConfig.getHotfixBranchPrefix(), false);
 
         // find hotfix support branches
@@ -415,29 +402,6 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
 
         String[] branches = hotfixBranches.split("\\r?\\n");
 
-        List<String> numberedList = new ArrayList<>();
-        StringBuilder str = new StringBuilder("Hotfix branches:").append(LS);
-        for (int i = 0; i < branches.length; i++) {
-            str.append((i + 1) + ". " + branches[i] + LS);
-            numberedList.add(String.valueOf(i + 1));
-        }
-        str.append("Choose hotfix branch to finish");
-
-        String hotfixNumber = null;
-        try {
-            while (StringUtils.isBlank(hotfixNumber)) {
-                hotfixNumber = prompter.prompt(str.toString(), numberedList);
-            }
-        } catch (PrompterException e) {
-            throw new MojoFailureException("hotfix-finish", e);
-        }
-
-        String hotfixBranchName = null;
-        if (hotfixNumber != null) {
-            int num = Integer.parseInt(hotfixNumber);
-            hotfixBranchName = branches[num - 1];
-        }
-
-        return hotfixBranchName;
+        return prompter.prompt(branches, null, "Hotfix branches:", "Choose hotfix branch to finish");
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2022 Aleksandr Mashchenko.
+ * Copyright 2014-2023 Aleksandr Mashchenko.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.codehaus.plexus.components.interactivity.PrompterException;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 
@@ -90,12 +89,7 @@ public class GitFlowSupportStartMojo extends AbstractGitFlowMojo {
                     throw new MojoFailureException("There are no tags.");
                 }
 
-                try {
-                    tag = prompter.prompt("Choose tag to start support branch",
-                            Arrays.asList(tagsStr.split("\\r?\\n")));
-                } catch (PrompterException e) {
-                    throw new MojoFailureException("support-start", e);
-                }
+                tag = prompter.prompt("Choose tag to start support branch", Arrays.asList(tagsStr.split("\\r?\\n")));
             } else if (StringUtils.isNotBlank(tagName)) {
                 if (gitCheckTagExists(tagName)) {
                     tag = tagName;
@@ -116,7 +110,7 @@ public class GitFlowSupportStartMojo extends AbstractGitFlowMojo {
                 branchName = supportBranchName;
             }
 
-            // git for-each-ref refs/heads/support/...
+            // check branch exists
             final boolean supportBranchExists = gitCheckBranchExists(gitFlowConfig.getSupportBranchPrefix() + branchName);
 
             if (supportBranchExists) {
@@ -141,7 +135,6 @@ public class GitFlowSupportStartMojo extends AbstractGitFlowMojo {
             }
 
             if (installProject) {
-                // mvn clean install
                 mvnCleanInstall();
             }
 

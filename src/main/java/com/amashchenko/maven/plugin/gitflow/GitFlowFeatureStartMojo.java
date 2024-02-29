@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2022 Aleksandr Mashchenko.
+ * Copyright 2014-2023 Aleksandr Mashchenko.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.shared.release.versions.VersionParseException;
-import org.codehaus.plexus.components.interactivity.PrompterException;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 
@@ -87,18 +86,8 @@ public class GitFlowFeatureStartMojo extends AbstractGitFlowMojo {
 
             String featureBranchName = null;
             if (settings.isInteractiveMode()) {
-                try {
-                    while (StringUtils.isBlank(featureBranchName)) {
-                        featureBranchName = prompter
-                                .prompt("What is a name of feature branch? " + gitFlowConfig.getFeatureBranchPrefix());
-
-                        if (!validateBranchName(featureBranchName, featureNamePattern, false)) {
-                            featureBranchName = null;
-                        }
-                    }
-                } catch (PrompterException e) {
-                    throw new MojoFailureException("feature-start", e);
-                }
+                featureBranchName = prompter.prompt("What is a name of feature branch? " + gitFlowConfig.getFeatureBranchPrefix(),
+                        res -> StringUtils.isNotBlank(res) && validateBranchName(res, featureNamePattern, false));
             } else {
                 validateBranchName(featureName, featureNamePattern, true);
                 featureBranchName = featureName;
@@ -110,7 +99,7 @@ public class GitFlowFeatureStartMojo extends AbstractGitFlowMojo {
 
             featureBranchName = StringUtils.deleteWhitespace(featureBranchName);
 
-            // git for-each-ref refs/heads/feature/...
+            // check branch exists
             final boolean featureBranchExists = gitCheckBranchExists(
                     gitFlowConfig.getFeatureBranchPrefix() + featureBranchName);
 
@@ -132,21 +121,17 @@ public class GitFlowFeatureStartMojo extends AbstractGitFlowMojo {
                         .featureVersion(featureBranchName);
 
                 if (StringUtils.isNotBlank(version)) {
-                    // mvn versions:set -DnewVersion=...
-                    // -DgenerateBackupPoms=false
                     mvnSetVersions(version);
 
                     Map<String, String> properties = new HashMap<>();
                     properties.put("version", version);
                     properties.put("featureName", featureBranchName);
 
-                    // git commit -a -m updating versions for feature branch
                     gitCommit(commitMessages.getFeatureStartMessage(), properties);
                 }
             }
 
             if (installProject) {
-                // mvn clean install
                 mvnCleanInstall();
             }
 
